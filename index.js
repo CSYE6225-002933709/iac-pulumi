@@ -13,9 +13,11 @@ const prvRtName = envConfig.require("prv-rt-name");
 const pubRtName = envConfig.require("pub-rt-name");
 const subnets = envConfig.require("subnets");
 const vpcCIDR = envConfig.require("vpc-cidr");
+const pubCIDR = envConfig.require("pub-cidr");
 
 const vpc = new ec2.Vpc(vpcName, {
     cidrBlock: vpcCIDR,
+    instanceTenancy: "default",
     tags: {
         Name: vpcName,
     },
@@ -33,7 +35,7 @@ aws.getAvailabilityZones().then((availabilityZones)=> {
         routeTableId: new ec2.RouteTable(pubRtName, {
             vpcId: vpc.id,
             routes: [{
-                cidrBlock: "0.0.0.0/0",
+                cidrBlock: pubCIDR,
                 gatewayId: igw.id,
             }],
         }).id,
