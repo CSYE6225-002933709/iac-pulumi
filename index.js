@@ -1,67 +1,80 @@
 import { ec2 } from "@pulumi/aws";
-import pulumi from "@pulumi/pulumi";
 import * as aws from "@pulumi/aws";
+import pulumi from "@pulumi/pulumi";
 
-const vpc = new ec2.Vpc("sai-vpc", {
-    cidrBlock: "10.0.0.0/16",
+// Fetching values from Config file
+const envConfig = new pulumi.Config("env");
+
+const vpcName   = envConfig.require("vpc-name");
+const igwName   = envConfig.require("igw-name");
+const prvRtAssocName = envConfig.require("prv-rt-assoc");
+const publicRtAssocName = envConfig.require("pub-rt-assoc");
+const prvRtName = envConfig.require("prv-rt-name");
+const pubRtName = envConfig.require("pub-rt-name");
+const subnets = envConfig.require("subnets");
+const vpcCIDR = envConfig.require("vpc-cidr");
+
+const vpc = new ec2.Vpc(vpcName, {
+    cidrBlock: vpcCIDR,
     tags: {
-        Name: "sai-vpc",
+        Name: vpcName,
     },
 });
 
-const igw = new ec2.InternetGateway("sai-igw", {
+const igw = new ec2.InternetGateway(igwName, {
     vpcId: vpc.id,
+});
+
+//var availabilityZones = ['us-east-1a', 'us-east-1b', 'us-east-1c']
+aws.getAvailabilityZones().then((availabilityZones)=> {
+
+    const publicRouteTable = new ec2.MainRouteTableAssociation(publicRtAssocName, {
+        vpcId: vpc.id,
+        routeTableId: new ec2.RouteTable(pubRtName, {
+            vpcId: vpc.id,
+            routes: [{
+                cidrBlock: "0.0.0.0/0",
+                gatewayId: igw.id,
+            }],
+        }).id,
+    });
     
-});
-
-let publicSubnets = [];
-let privateSubnets = [];
-
-//var availabilityZones = ['us-east-1a', 'us-east-1b', 'us-east-1c'];
-
-var availabilityZones = aws.getAvailabilityZones({state: "available"});
-
-for (let i = 0; i < 3; i++) {
-    publicSubnets[i] = new ec2.Subnet(`public-subnet-${i}`, {
+    const privateRouteTable = new ec2.MainRouteTableAssociation(prvRtAssocName, {
         vpcId: vpc.id,
-        cidrBlock: `10.0.${i}.0/24`,
-        mapPublicIpOnLaunch: true,
-        availabilityZone: availabilityZones[i],
+        routeTableId: new ec2.RouteTable(prvRtName, {
+            vpcId: vpc.id,
+        }).id,
     });
 
-    privateSubnets[i] = new ec2.Subnet(`private-subnet-${i}`, {
-        vpcId: vpc.id,
-        cidrBlock: `10.0.${i+3}.0/24`,
-        mapPublicIpOnLaunch: false,
-        availabilityZone: availabilityZones[i],
-    });
-}
+    const count = Math.min(availabilityZones.names.length, subnets);
 
-const publicRouteTable = new ec2.MainRouteTableAssociation("public-route-table", {
-    vpcId: vpc.id,
-    routeTableId: new ec2.RouteTable("public-routeTable", {
-        vpcId: vpc.id,
-        routes: [{
-            cidrBlock: "0.0.0.0/0",
-            gatewayId: igw.id,
-        }],
-    }).id,
-});
+    for (let i = 0; i < count; i++) {
 
-const privateRouteTable = new ec2.MainRouteTableAssociation("private-route-table", {
-    vpcId: vpc.id,
-    routeTableId: new ec2.RouteTable("private-routeTable", {
-        vpcId: vpc.id,
-    }).id,
-});
+        let publicSubnets = new ec2.Subnet(`public-subnet-${i}`, {
+            vpcId: vpc.id,
+            cidrBlock: `10.0.${i}.0/24`,
+            mapPublicIpOnLaunch: true,
+            availabilityZone: availabilityZones.names[i],            
+        });
+    
+        let privateSubnets = new ec2.Subnet(`private-subnet-${i}`, {
+            vpcId: vpc.id,
+            cidrBlock: `10.0.${i+subnets}.0/24`,
+            mapPublicIpOnLaunch: false,
+            availabilityZone: availabilityZones.names[i],
+        });
 
-for (let i = 0; i < 3; i++) {
-    new ec2.RouteTableAssociation(`public-association-${i}`, {
-        subnetId: publicSubnets[i].id,
-        routeTableId: publicRouteTable.routeTableId,
-    });
-    new ec2.RouteTableAssociation(`private-association-${i}`, {
-        subnetId: privateSubnets[i].id,
-        routeTableId: privateRouteTable.routeTableId,
-    });
-}
+        new ec2.RouteTableAssociation(`public-association-${i}`, {
+            subnetId: publicSubnets.id,
+            routeTableId: publicRouteTable.routeTableId,
+        });
+
+        new ec2.RouteTableAssociation(`private-association-${i}`, {
+            subnetId: privateSubnets.id,
+            routeTableId: privateRouteTable.routeTableId,
+        });
+    }
+})
+
+
+

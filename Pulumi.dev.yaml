@@ -1,3 +1,13 @@
 encryptionsalt: v1:8mLP5Dw1Fpc=:v1:ALOiQyrmWTB200AU:YrYW5TzDlG9JkArC71t2h/qM9tRsqg==
-config:
+config:  
   aws:region: us-east-1
+  
+  env:igw-name: "sai-igw"
+  env:vpc-name: "sai-vpc"
+  env:prv-rt-assoc: "sai-prv-route-table-assoc"
+  env:prv-rt-name: "sai-prv-route-table"
+  env:pub-rt-assoc: "sai-pub-route-table-assoc"
+  env:pub-rt-name: "sai-pub-route-table"
+  
+  env:subnets: 3 # number of subnets
+  env:vpc-cidr: "10.0.0.0/16"
