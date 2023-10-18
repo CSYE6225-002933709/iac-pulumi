@@ -3,10 +3,12 @@ config:
   aws:region: us-east-1
   
   env:igw-name: "sai-igw"
+  env:vpc-name: "sai-vpc"
   env:prv-rt-assoc: "sai-prv-route-table-assoc"
   env:prv-rt-name: "sai-prv-route-table"
   env:pub-rt-assoc: "sai-pub-route-table-assoc"
   env:pub-rt-name: "sai-pub-route-table"
+  
   env:subnets: '3' # number of subnets
   env:vpc-cidr: "10.0.0.0/16"
   env:pub-cidr: "0.0.0.0/0"
