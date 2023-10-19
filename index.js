@@ -15,6 +15,11 @@ const subnets = envConfig.require("subnets");
 const vpcCIDR = envConfig.require("vpc-cidr");
 const pubCIDR = envConfig.require("pub-cidr");
 
+const amiName = envConfig.require("ami-name");
+const amiId = envConfig.require("ami-id");
+
+const publicSubnetIds = [];
+
 const vpc = new ec2.Vpc(vpcName, {
   cidrBlock: vpcCIDR,
   instanceTenancy: "default",
@@ -62,14 +67,6 @@ aws.getAvailabilityZones().then((availabilityZones) => {
     vpcId: vpc.id,
   });
 
-  /*const privateRouteTable = new aws.ec2.MainRouteTableAssociation(
-    prvRtAssocName,
-    {
-      vpcId: vpc.id,
-      routeTableId: privateRT.id,
-    }
-  );*/
-
   const count = Math.min(availabilityZones.names.length, subnets);
 
   for (let i = 0; i < count; i++) {
@@ -79,6 +76,8 @@ aws.getAvailabilityZones().then((availabilityZones) => {
       mapPublicIpOnLaunch: true,
       availabilityZone: availabilityZones.names[i],
     });
+
+    publicSubnetIds.push(publicSubnets.id);
 
     let privateSubnets = new ec2.Subnet(`private-subnet-${i}`, {
       vpcId: vpc.id,
@@ -97,4 +96,77 @@ aws.getAvailabilityZones().then((availabilityZones) => {
       routeTableId: privateRouteTable.id,
     });
   }
+});
+
+// Define AWS Security Group
+const appSecurityGroup = new aws.ec2.SecurityGroup("appSecurityGroup", {
+  description: "Application Security Group",
+  ingress: [
+    {
+      protocol: "tcp",
+      fromPort: 22,
+      toPort: 22,
+      cidrBlocks: ["0.0.0.0/0"],
+    },
+    {
+      protocol: "tcp",
+      fromPort: 80,
+      toPort: 80,
+      cidrBlocks: ["0.0.0.0/0"],
+    },
+    {
+      protocol: "tcp",
+      fromPort: 443,
+      toPort: 443,
+      cidrBlocks: ["0.0.0.0/0"],
+    },
+    {
+      protocol: "tcp",
+      fromPort: 8080,
+      toPort: 8080,
+      cidrBlocks: ["0.0.0.0/0"],
+    },
+  ],
+  egress: [
+    {
+      protocol: "-1",
+      fromPort: 0,
+      toPort: 0,
+      cidrBlocks: ["0.0.0.0/0"],
+    },
+  ],
+});
+
+let ami = pulumi.output(
+  aws.ec2.getAmi({
+    filters: [
+      {
+        name: "name",
+        values: ["csye6225_*"],
+      },
+    ],
+    mostRecent: true,
+  })
+);
+
+// Create and launch an Amazon Linux EC2 instance into the public subnet.
+const instance = new aws.ec2.Instance("instance", {
+  ami: ami.id,
+  keyName: "Assignment5",
+  instanceType: "t2.micro",
+  subnetId: publicSubnetIds[0],
+  vpcSecurityGroupIds: [appSecurityGroup.id],
+  userData: `
+      #!/bin/bash
+      which git
+      cd /home/admin
+      sudo tar xzvf project.tar.gz -C .
+      sudo rm -r node_modules
+      sudo npm i
+      sudo mysql << EOF
+      ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'SetRootPasswordHere';
+      exit 
+      EOF
+      sudo mysql_secure_installation      
+  `,
 });
