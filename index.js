@@ -32,7 +32,7 @@ var subnetArray = [];
 
 function init_subnets() {
   var subnet_base = vpcCIDR.split(".")[0] + vpcCIDR(".")[1] + ".";
-
+  
   for (i = 1; i < parseInt(subnets); i++) {
     subnetArray.append(
       subnet_base +
