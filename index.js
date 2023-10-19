@@ -142,7 +142,7 @@ let ami = pulumi.output(
     filters: [
       {
         name: "name",
-        values: ["csye6225_*"],
+        values: ["Assignment5"],
       },
     ],
     mostRecent: true,
@@ -155,18 +155,5 @@ const instance = new aws.ec2.Instance("instance", {
   keyName: "Assignment5",
   instanceType: "t2.micro",
   subnetId: publicSubnetIds[0],
-  vpcSecurityGroupIds: [appSecurityGroup.id],
-  userData: `
-      #!/bin/bash
-      which git
-      cd /home/admin
-      sudo tar xzvf project.tar.gz -C .
-      sudo rm -r node_modules
-      sudo npm i
-      sudo mysql << EOF
-      ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'SetRootPasswordHere';
-      exit 
-      EOF
-      sudo mysql_secure_installation      
-  `,
+  vpcSecurityGroupIds: [appSecurityGroup.id]
 });
