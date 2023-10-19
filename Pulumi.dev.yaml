@@ -12,3 +12,5 @@ config:
   env:subnets: '3' # number of subnets
   env:vpc-cidr: "10.0.0.0/16"
   env:pub-cidr: "0.0.0.0/0"
+  env:ami-id: "ami-01ffb20594ca4d922"
+  env:ami-name: "Assignment5"
