@@ -7,7 +7,6 @@ const envConfig = new pulumi.Config("env");
 
 const vpcName = envConfig.require("vpc-name");
 const igwName = envConfig.require("igw-name");
-const prvRtAssocName = envConfig.require("prv-rt-assoc");
 const publicRtAssocName = envConfig.require("pub-rt-assoc");
 const prvRtName = envConfig.require("prv-rt-name");
 const pubRtName = envConfig.require("pub-rt-name");
@@ -17,8 +16,6 @@ const pubCIDR = envConfig.require("pub-cidr");
 
 const amiName = envConfig.require("ami-name");
 
-const publicSubnetIds = [];
-
 const vpc = new ec2.Vpc(vpcName, {
   cidrBlock: vpcCIDR,
   instanceTenancy: "default",
@@ -27,131 +24,148 @@ const vpc = new ec2.Vpc(vpcName, {
   },
 });
 
+var publicSubnetList = [];
+
 const igw = new ec2.InternetGateway(igwName, {
   vpcId: vpc.id,
 });
 
-aws.getAvailabilityZones().then((availabilityZones) => {
-  const publicRouteTable = new ec2.MainRouteTableAssociation(
-    publicRtAssocName,
-    {
-      vpcId: vpc.id,
-      routeTableId: new ec2.RouteTable(pubRtName, {
-        vpcId: vpc.id,
-        routes: [
-          {
-            cidrBlock: pubCIDR,
-            gatewayId: igw.id,
-          },
-        ],
-      }).id,
-    }
-  );
+const createInstance = async () => {
 
-  const privateRouteTable = new ec2.RouteTable(prvRtName, {
-    vpcId: vpc.id,
-  });
+  const availabilityZones = await aws.getAvailabilityZones().then((availabilityZones) => {
 
-  const count = Math.min(availabilityZones.names.length, subnets);
-
-  for (let i = 0; i < count; i++) {
-    let publicSubnets = new ec2.Subnet(`public-subnet-${i}`, {
-      vpcId: vpc.id,
-      cidrBlock: `10.0.${i}.0/24`,
-      mapPublicIpOnLaunch: true,
-      availabilityZone: availabilityZones.names[i],
-    });
-
-    publicSubnetIds.push(publicSubnets.id);
-
-    let privateSubnets = new ec2.Subnet(`private-subnet-${i}`, {
-      vpcId: vpc.id,
-      cidrBlock: `10.0.${i + parseInt(subnets)}.0/24`,
-      mapPublicIpOnLaunch: false,
-      availabilityZone: availabilityZones.names[i],
-    });
-
-    new ec2.RouteTableAssociation(`public-association-${i}`, {
-      subnetId: publicSubnets.id,
-      routeTableId: publicRouteTable.routeTableId,
-    });
-
-    new ec2.RouteTableAssociation(`private-association-${i}`, {
-      subnetId: privateSubnets.id,
-      routeTableId: privateRouteTable.id,
-    });
-  }
-});
-
-// Define AWS Security Group
-const appSecurityGroup = new aws.ec2.SecurityGroup("appSecurityGroup", {
-  description: "Application Security Group",
-  ingress: [
-    {
-      protocol: "tcp",
-      fromPort: 22,
-      toPort: 22,
-      cidrBlocks: ["0.0.0.0/0"],
-    },
-    {
-      protocol: "tcp",
-      fromPort: 80,
-      toPort: 80,
-      cidrBlocks: ["0.0.0.0/0"],
-    },
-    {
-      protocol: "tcp",
-      fromPort: 443,
-      toPort: 443,
-      cidrBlocks: ["0.0.0.0/0"],
-    },
-    {
-      protocol: "tcp",
-      fromPort: 8080,
-      toPort: 8080,
-      cidrBlocks: ["0.0.0.0/0"],
-    },
-  ],
-  egress: [
-    {
-      protocol: "-1",
-      fromPort: 0,
-      toPort: 0,
-      cidrBlocks: ["0.0.0.0/0"],
-    },
-  ],
-});
-
-let ami = pulumi.output(
-  aws.ec2.getAmi({
-    filters: [
+    const publicRouteTable = new ec2.MainRouteTableAssociation(
+      publicRtAssocName,
       {
-        name: "name",
-        values: [amiName + "_*"],
+        vpcId: vpc.id,
+        routeTableId: new ec2.RouteTable(pubRtName, {
+          vpcId: vpc.id,
+          routes: [
+            {
+              cidrBlock: pubCIDR,
+              gatewayId: igw.id,
+            },
+          ],
+        }).id,
+      }
+    );
+  
+    
+  
+    const privateRouteTable = new ec2.RouteTable(prvRtName, {
+      vpcId: vpc.id,
+    });
+  
+    const count = Math.min(availabilityZones.names.length, subnets);
+  
+    for (let i = 0; i < count; i++) {
+  
+      var publicSubnets = new ec2.Subnet(`publicsubnet${i}`, {
+        vpcId: vpc.id,
+        cidrBlock: `10.0.${i}.0/24`,
+        mapPublicIpOnLaunch: true,
+        availabilityZone: availabilityZones.names[i],
+        tags: {
+          "Type": "public",
+        },
+      });
+      
+      publicSubnetList.push(publicSubnets);
+      
+      var privateSubnets = new ec2.Subnet(`private-subnet-${i}`, {
+        vpcId: vpc.id,
+        cidrBlock: `10.0.${i + parseInt(subnets)}.0/24`,
+        mapPublicIpOnLaunch: false,
+        availabilityZone: availabilityZones.names[i],
+      });
+  
+      new ec2.RouteTableAssociation(`public-association-${i}`, {
+        subnetId: publicSubnets.id,
+        routeTableId: publicRouteTable.routeTableId,
+      });
+  
+      new ec2.RouteTableAssociation(`private-association-${i}`, {
+        subnetId: privateSubnets.id,
+        routeTableId: privateRouteTable.id,
+      });
+      
+    }
+    
+  });
+  
+  // Define AWS Security Group
+  const appSecurityGroup = new aws.ec2.SecurityGroup("appSecurityGroup", {
+    description: "Application Security Group",
+    vpcId: vpc.id,
+    ingress: [
+      {
+        protocol: "tcp",
+        fromPort: 22,
+        toPort: 22,
+        cidrBlocks: [pubCIDR],
+      },
+      {
+        protocol: "tcp",
+        fromPort: 80,
+        toPort: 80,
+        cidrBlocks: [pubCIDR],
+      },
+      {
+        protocol: "tcp",
+        fromPort: 443,
+        toPort: 443,
+        cidrBlocks: [pubCIDR],
+      },
+      {
+        protocol: "tcp",
+        fromPort: 8080,
+        toPort: 8080,
+        cidrBlocks: [pubCIDR],
       },
     ],
-    mostRecent: true,
-  })
-);
+    egress: [
+      {
+        protocol: "-1",
+        fromPort: 0,
+        toPort: 0,
+        cidrBlocks: [pubCIDR],
+      },
+    ],
+  });
+  
+  let ami = pulumi.output(
+    aws.ec2.getAmi({
+      filters: [
+        {
+          name: "name",
+          values: [amiName + "_*"],
+        },
+      ],
+      mostRecent: true,
+    })
+  );
+  
+  
+  /*const filteredSubnets = pulumi.output(ec2.getSubnetIds({
+    tags: {
+      Type: "public",
+    },
+    vpcId: vpc.id,
+  }));
+  
+  const selectedSubnet = filteredSubnets.ids.apply(ids => ids[0]);
+  
+  console.log(publicSubnetList[0].id);
+  */
+  // Create and launch an Amazon Linux EC2 instance into the public subnet.
+  const instance = new ec2.Instance("instance", {
+    ami: ami.id,
+    keyName: "Login_Sai",
+    instanceType: "t2.micro", 
+    subnetId:  publicSubnetList[0].id,
+    vpcId: vpc.id,
+    vpcSecurityGroupIds: [appSecurityGroup.id],
+  });  
+}
 
-// Create and launch an Amazon Linux EC2 instance into the public subnet.
-const instance = new aws.ec2.Instance("instance", {
-  ami: ami.id,
-  keyName: "Login_Assignment",
-  instanceType: "t2.micro",
-  subnetId: publicSubnetIds[0],
-  vpcSecurityGroupIds: [appSecurityGroup.id],
-  userData: `
-      #!/bin/bash
-      which git
-      cd /home/admin
-      sudo tar xzvf project.tar.gz -C .
-      sudo rm -r node_modules
-      sudo npm i
-      sudo mysql << EOF
-      ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'SetRootPasswordHere';
-      exit 
-      EOF
-      sudo mysql_secure_installation      
-  `,
-});
+createInstance();

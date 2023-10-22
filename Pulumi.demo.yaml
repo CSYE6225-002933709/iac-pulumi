@@ -13,4 +13,4 @@ config:
   env:vpc-cidr: "10.0.0.0/16"
   env:pub-cidr: "0.0.0.0/0"
   env:ami-id: "ami-01ffb20594ca4d922"
-  env:ami-name: "Assignment5"
+  env:ami-name: "csye6225"
