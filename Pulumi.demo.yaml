@@ -12,5 +12,6 @@ config:
   env:subnets: '3' # number of subnets
   env:vpc-cidr: "10.0.0.0/16"
   env:pub-cidr: "0.0.0.0/0"
-  env:ami-id: "ami-01ffb20594ca4d922"
   env:ami-name: "csye6225"
+  env:rds-password: "A5tr0ngPa55w0rd"
+  env:user-data-script: "./userDataScript.sh"
