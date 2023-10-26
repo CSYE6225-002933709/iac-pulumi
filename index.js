@@ -16,7 +16,6 @@ const pubCIDR = envConfig.require("pub-cidr");
 const rdsPass = envConfig.require("rds-password");
 
 const amiName = envConfig.require("ami-name");
-const userDataScript = envConfig.require("user-data-script");
 
 var rdsIP;
 
@@ -189,19 +188,17 @@ const createEC2Instance = async () => {
     })
   );
 
-  console.log(userDataScript);
-
   const userData = pulumi.all([rdsInstance.id, hostname]).apply(([id, endpoint]) => {
 
     `
-      #!/bin/base         
-      sudo touch /opt/csye6225/.env
-      sudo chown admin /opt/csye6225/.env     
+      #!/bin/base               
       sudo echo 'DB_USERNAME = "csye6225"' >> /opt/csye6225/.env
       sudo echo 'DB_PASSWORD = "A5tr0ngPa55w0rd"' >> /opt/csye6225/.env
       sudo echo 'DB_DIALECT  = "mysql"' >> /opt/csye6225/.env
       sudo echo 'DB_NAME     = "saiDB"' >> /opt/csye6225/.env
       sudo echo 'DB_IPADDRESS= ${endpoint}' >> /opt/csye6225/.env
+      sudo cd /opt/csye6225
+      sudo chown -R csye6225:csye6225 .
       sudo systemctl daemon-reload
       sudo systemctl enable csye6225
       sudo systemctl start csye6225
