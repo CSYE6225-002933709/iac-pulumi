@@ -174,6 +174,46 @@ const createSubnets = async (availabilityZones) => {
       }
 }
 
+const getUserData = async () => {
+
+  return rdsInstance.endpoint.apply (endpoint => {
+    
+    const hostname = endpoint.split(':')[0];
+
+    return `#!/bin/bash    
+    sudo groupadd csye6225
+    sudo useradd -s /bin/false -g csye6225 -d /opt/csye6225 -m csye6225
+
+    sudo cp '/home/admin/webapp.service' '/etc/systemd/system/csye6225.service'
+
+    cd '/home/admin/' || exit
+    sudo apt-get update
+    sudo apt install nodejs npm -y  
+    sudo apt-get install unzip
+    sudo unzip project.zip -d webapp
+
+    sudo rm project.zip
+    sudo touch ./webapp/.env
+    sudo rm -r ./webapp/node_modules
+    sudo chown admin:admin webapp
+    sudo chown admin:admin ./webapp/*
+    sudo chmod -R 755 webapp
+    echo 'DB_USERNAME = "csye6225"' >> ./webapp/.env
+    echo 'DB_PASSWORD = "A5tr0ngPa55w0rd"' >> ./webapp/.env
+    echo 'DB_DIALECT  = "mysql"' >> ./webapp/.env
+    echo 'DB_NAME     = "saiDB"' >> ./webapp/.env
+    sudo echo 'DB_IPADDRESS = "${hostname}"' >> ./webapp/.env        
+
+    cd './webapp' || exit    
+    sudo npm i
+    sudo npm test        
+    
+    sudo systemctl daemon-reload
+    sudo systemctl enable csye6225
+    sudo systemctl start csye6225
+    `
+  })
+} 
 const createEC2Instance = async () => {
 
   ami = pulumi.output(
@@ -188,23 +228,6 @@ const createEC2Instance = async () => {
     })
   );
 
-  const userData = pulumi.all([rdsInstance.id, hostname]).apply(([id, endpoint]) => {
-
-    `
-      #!/bin/base               
-      sudo echo 'DB_USERNAME = "csye6225"' >> /opt/csye6225/.env
-      sudo echo 'DB_PASSWORD = "A5tr0ngPa55w0rd"' >> /opt/csye6225/.env
-      sudo echo 'DB_DIALECT  = "mysql"' >> /opt/csye6225/.env
-      sudo echo 'DB_NAME     = "saiDB"' >> /opt/csye6225/.env
-      sudo echo 'DB_IPADDRESS= ${endpoint}' >> /opt/csye6225/.env
-      sudo cd /opt/csye6225
-      sudo chown -R csye6225:csye6225 .
-      sudo systemctl daemon-reload
-      sudo systemctl enable csye6225
-      sudo systemctl start csye6225
-      sudo systemctl restart csye6225
-    `
-  }) 
 // Create and launch an Amazon Linux EC2 instance into the public subnet.
 instance = new ec2.Instance("instance", {
   ami: ami.id,
@@ -213,7 +236,7 @@ instance = new ec2.Instance("instance", {
   subnetId: publicSubnetList[0].id,
   vpcId: vpc.id,
   vpcSecurityGroupIds: [appSecurityGroup.id],
-  userData: userData,
+  userData: getUserData(),
 }, {dependsOn: [rdsInstance]});
 
 }
@@ -272,10 +295,7 @@ const createRDSInstance = async () => {
     vpcSecurityGroupIds: [databaseSecurityGroup.id],
   }, {dependsOn: [rdsPrivateSubnetGroup, databaseSecurityGroup]});
 
-  hostname = rdsInstance.endpoint.apply((endpoint) => {
-    console.log(endpoint.toString());
-    rdsIP = endpoint.split(':')[0];
-  });
+
 }
 
 const createInstance = async () => {
