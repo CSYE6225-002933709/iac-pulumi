@@ -14,6 +14,7 @@ const subnets = envConfig.require("subnets");
 const vpcCIDR = envConfig.require("vpc-cidr");
 const pubCIDR = envConfig.require("pub-cidr");
 const rdsPass = envConfig.require("rds-password");
+const domainName = envConfig.require("domain-name");
 
 const amiName = envConfig.require("ami-name");
 
@@ -44,6 +45,10 @@ var rdsInstance;
 var publicRouteTable;
 var privateRouteTable;
 var hostname;
+var iamUser;
+var iamRole;
+var rolePolicyAttachment;
+var instanceProfile;
 
 const createSecurityGroups = async () => {
 
@@ -181,6 +186,14 @@ const getUserData = async () => {
     const hostname = endpoint.split(':')[0];
 
     return `#!/bin/bash  
+    
+    # Configure CloudWatch
+    sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+    -a fetch-config \
+    -m ec2 \
+    -c file:/home/admin/cloudwatch-config.json \
+    -s
+
     cd /home/csye6225/webapp || exit
     # Setting up the environment variables
     echo 'DB_USERNAME = "csye6225"' >> .env
@@ -193,7 +206,7 @@ const getUserData = async () => {
 
     sudo npm test    
     cd .. 
-    sudo chown csye6225:csye6225 -R webapp
+    sudo chown csye6225:csye6225 -R webapp    
 
     # Setting up the service
     sudo systemctl daemon-reload
@@ -204,6 +217,7 @@ const getUserData = async () => {
     `
   })
 } 
+
 const createEC2Instance = async () => {
 
   ami = pulumi.output(
@@ -227,6 +241,7 @@ instance = new ec2.Instance("instance", {
   vpcId: vpc.id,
   vpcSecurityGroupIds: [appSecurityGroup.id],
   userData: getUserData(),
+  iamInstanceProfile: instanceProfile.name,
 }, {dependsOn: [rdsInstance]});
 
 }
@@ -291,6 +306,50 @@ const createRDSInstance = async () => {
   });
 }
 
+const setupSubdomain = async () => {
+
+  let route53Zone = aws.route53.getZone({ name: domainName });
+
+  const aRecord = new aws.route53.Record(`${domainName}-ARecord`, {
+    zoneId: route53Zone.then(zone => zone.id),
+    name: domainName,
+    type: "A",
+    ttl: 300,
+    records: [instance.publicIp],
+  });
+
+}
+
+const createCloudWatchIAMRole = async () => {
+  // Create a new IAM User
+  iamUser = new aws.iam.User("cloudwatch-user-1", {});
+
+  // Create a new IAM role
+  iamRole = new aws.iam.Role("cloudwatch-role", {
+    assumeRolePolicy: JSON.stringify({
+        Version: "2012-10-17",
+        Statement: [{
+            Action: "sts:AssumeRole",
+            Principal: {
+                Service: "ec2.amazonaws.com"
+            },
+            Effect: "Allow",
+        }],
+    }),
+  });
+
+  // Attach a policy to the IAM role
+  rolePolicyAttachment = new aws.iam.RolePolicyAttachment("cloudwatch-role-policy-attachment", {
+    role: iamRole.name,
+    policyArn: "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+  });
+
+  // Create an IAM instance profile and attach the role
+  instanceProfile = new aws.iam.InstanceProfile("cloudwatch-instance-profile", {
+    role: iamRole.name,
+  });
+}
+
 const createInstance = async () => {
 
   const availabilityZones = await aws
@@ -309,7 +368,11 @@ const createInstance = async () => {
       
       createRDSInstance();
 
+      createCloudWatchIAMRole();
+
       createEC2Instance();
+
+      setupSubdomain();
     })
 };
 

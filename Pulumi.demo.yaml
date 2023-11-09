@@ -15,3 +15,4 @@ config:
   env:ami-name: "csye6225"
   env:rds-password: "A5tr0ngPa55w0rd"
   env:user-data-script: "./userDataScript.sh"
+  env:domain-name: "demo.dutt-sai-csye6225.online"
