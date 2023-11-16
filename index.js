@@ -36,9 +36,12 @@ const igw = new ec2.InternetGateway(igwName, {
 });
 
 var appSecurityGroup;
+var databaseSecurityGroup;
+var loadBalancerSecurityGroup;
+
 var ami;
 var instance;
-var databaseSecurityGroup;
+
 var mariaDbParameterGroup;
 var rdsPrivateSubnetGroup;
 var rdsInstance;
@@ -50,9 +53,46 @@ var iamRole;
 var rolePolicyAttachment;
 var instanceProfile;
 
+var launchConfiguration;
+var autoScalingGroup;
+
+var cpuScaleUpPolicy;
+var cpuScaleDownPolicy;
+
+var loadBalancer;
+
 const createSecurityGroups = async () => {
 
-  // Define AWS Security Group
+
+  loadBalancerSecurityGroup = new aws.ec2.SecurityGroup("load balancer security group", {
+    description: "Enable HTTP and HTTPS access",
+    vpcId: vpc.id,
+    ingress: [
+        // allow HTTP from anywhere
+        {
+            protocol: "tcp",
+            fromPort: 80,
+            toPort: 80,
+            cidrBlocks: [pubCIDR],
+        },
+        // allow HTTPS from anywhere
+        {
+            protocol: "tcp",
+            fromPort: 443,
+            toPort: 443,
+            cidrBlocks: [pubCIDR],
+        },
+    ],
+    egress: [
+      {
+        protocol: "-1",
+        fromPort: 0,
+        toPort: 0,
+        cidrBlocks: [pubCIDR],
+      },
+    ]
+  });
+
   appSecurityGroup = new ec2.SecurityGroup("appSecurityGroup", {
     description: "Application Security Group",
     vpcId: vpc.id,
@@ -61,25 +101,13 @@ const createSecurityGroups = async () => {
         protocol: "tcp",
         fromPort: 22,
         toPort: 22,
-        cidrBlocks: [pubCIDR],
-      },
-      {
-        protocol: "tcp",
-        fromPort: 80,
-        toPort: 80,
-        cidrBlocks: [pubCIDR],
-      },
-      {
-        protocol: "tcp",
-        fromPort: 443,
-        toPort: 443,
-        cidrBlocks: [pubCIDR],
+        securityGroups: [loadBalancerSecurityGroup],
       },
       {
         protocol: "tcp",
         fromPort: 8080,
         toPort: 8080,
-        cidrBlocks: [pubCIDR],
+        securityGroups: [loadBalancerSecurityGroup],
       },
     ],
     egress: [
@@ -92,7 +120,6 @@ const createSecurityGroups = async () => {
     ],
   });
 
-  // Define AWS Security Group
   databaseSecurityGroup = new aws.ec2.SecurityGroup(
     "databaseSecurityGroup",
     {
@@ -116,6 +143,7 @@ const createSecurityGroups = async () => {
       ],
     }
   );
+
 }
 
 const createRouteTables = async () => {
@@ -314,10 +342,13 @@ const setupSubdomain = async () => {
     zoneId: route53Zone.then(zone => zone.id),
     name: domainName,
     type: "A",
-    ttl: 300,
-    records: [instance.publicIp],
-  });
 
+    aliases: [{
+      name: loadBalancer.dnsName,
+      zoneId: loadBalancer.zoneId,
+      evaluateTargetHealth: true,
+    }],
+  });
 }
 
 const createCloudWatchIAMRole = async () => {
@@ -350,6 +381,140 @@ const createCloudWatchIAMRole = async () => {
   });
 }
 
+const createLoadBalancer = async () => {
+
+  ami = pulumi.output(
+    aws.ec2.getAmi({
+      filters: [
+        {
+          name: "name",
+          values: [amiName + "_*"],
+        },
+      ],
+      mostRecent: true,
+    })
+  );
+
+  launchConfiguration = new aws.ec2.LaunchConfiguration("launchConfiguration", {
+    imageId: ami.id, // Replace with your custom AMI ID
+    instanceType: "t2.micro",
+    keyName: "Login_Sai",
+    securityGroups: [ loadBalancerSecurityGroup.id ],
+    associatePublicIpAddress: true,
+    userData: getUserData(),
+    iamInstanceProfile: instanceProfile.name,
+  });
+
+  autoScalingGroup = new aws.autoscaling.Group("autoScalingGroup", {
+    
+    vpcZoneIdentifiers: [publicSubnetList[0].id],
+    launchConfiguration: launchConfiguration.id,
+    desiredCapacity: 1,
+    cooldown: 60,
+    minSize: 1,
+    maxSize: 3,
+    tags: [{
+        key: 'AutoScalingGroup',
+        value: 'True',
+        propagateAtLaunch: true
+    }],
+  });
+
+  const bucket = new aws.s3.Bucket("my-access-logs-bucket");
+
+  loadBalancer = new aws.lb.LoadBalancer("alb", {
+
+    securityGroups: [loadBalancerSecurityGroup.id],
+    loadBalancerType: "application",
+    internal: false,
+    subnets: [publicSubnetList[0].id, publicSubnetList[1].id],
+    enableDeletionProtection: false,
+    accessLogs: {
+      bucket: bucket.bucket, 
+      enabled: true, 
+    },
+
+    tags: {
+      Environment: "production",
+    },
+  });
+
+  const lb_target_group = new aws.lb.TargetGroup("lbTarget", {
+    port: 8080, // the port where your application listens
+    protocol: "HTTP",
+    vpcId: vpc.id, // choose the VPC where your instances are running
+    healthCheck: {
+      protocol: "HTTP",
+      path: "/healthz",
+      matcher: "200",
+      interval: 30,
+      healthyThreshold: 10,
+      unhealthyThreshold: 2 
+  },
+  });
+
+  const lb_listener = new aws.lb.Listener("lbListener", {
+    loadBalancerArn: loadBalancer.id,
+    port: 80,
+    defaultActions: [
+        {
+            type: "forward",
+            targetGroupArn: lb_target_group.id,
+        }
+    ]
+  });
+
+  const autoScalGrpAtch = new aws.autoscaling.Attachment("asgAttachment", {
+    autoscalingGroupName: autoScalingGroup.name,
+    lbTargetGroupArn: lb_target_group.arn,
+  });
+
+}
+
+const createScalingPolicies = async () => {
+
+  cpuScaleUpPolicy = new aws.autoscaling.Policy("cpuScaleUpPolicy", {
+    autoscalingGroupName: autoScalingGroup.name,
+    adjustmentType: "ChangeInCapacity",
+    scalingAdjustment: 1,
+  });
+
+  cpuScaleDownPolicy = new aws.autoscaling.Policy("cpuScaleDownPolicy", {
+    autoscalingGroupName: autoScalingGroup.name,
+    adjustmentType: "ChangeInCapacity",
+    scalingAdjustment: -1,
+  });
+
+  // Add alarms
+  const highCpuAlarm = new aws.cloudwatch.MetricAlarm("highCpuAlarm", {
+    comparisonOperator: "GreaterThanOrEqualToThreshold",
+    evaluationPeriods: "2",
+    metricName: "CPUUtilization",
+    namespace: "AWS/EC2",
+    period: "60",
+    statistic: "Average",
+    threshold: "5",
+    alarmDescription: "This metric triggers a scale up if the CPU usage exceeds 5%",
+    dimensions: { AutoScalingGroupName: autoScalingGroup.name },
+    alarmActions: [cpuScaleUpPolicy.arn]
+  })
+
+  const lowCpuAlarm = new aws.cloudwatch.MetricAlarm("lowCpuAlarm", {
+    comparisonOperator: "LessThanOrEqualToThreshold",
+    evaluationPeriods: "2",
+    metricName: "CPUUtilization",
+    namespace: "AWS/EC2",
+    period: "60",
+    statistic: "Average",
+    threshold: "3",
+    alarmDescription: "This metric triggers a scale down if the CPU usage falls below 3%",
+    dimensions: { AutoScalingGroupName: autoScalingGroup.name },
+    alarmActions: [cpuScaleDownPolicy.arn]
+  })
+
+}
+
+
 const createInstance = async () => {
 
   const availabilityZones = await aws
@@ -370,7 +535,9 @@ const createInstance = async () => {
 
       createCloudWatchIAMRole();
 
-      createEC2Instance();
+      createLoadBalancer();
+
+      createScalingPolicies();
 
       setupSubdomain();
     })
