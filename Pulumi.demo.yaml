@@ -1,18 +1,17 @@
 encryptionsalt: v1:K+uEBrB2U7c=:v1:0mwKmt8ELdm+kzaT:iUHvXdfiaIYSpRZLJ6dvc2EAIiBohA==
 config:
   aws:region: us-east-1
-
+  env:ami-name: "csye6225"
+  env:domain-name: "demo.dutt-sai-csye6225.online"
   env:igw-name: "sai-igw"
-  env:vpc-name: "sai-vpc"
   env:prv-rt-assoc: "sai-prv-route-table-assoc"
   env:prv-rt-name: "sai-prv-route-table"
+  env:pub-cidr: "0.0.0.0/0"
   env:pub-rt-assoc: "sai-pub-route-table-assoc"
   env:pub-rt-name: "sai-pub-route-table"
-  
-  env:subnets: '3' # number of subnets
-  env:vpc-cidr: "10.0.0.0/16"
-  env:pub-cidr: "0.0.0.0/0"
-  env:ami-name: "csye6225"
   env:rds-password: "A5tr0ngPa55w0rd"
+  env:subnets: '3' # number of subnets
   env:user-data-script: "./userDataScript.sh"
-  env:domain-name: "demo.dutt-sai-csye6225.online"
+  env:vpc-cidr: "10.0.0.0/16"
+  env:vpc-name: "sai-vpc"
+  gcp:project: hale-life-406421

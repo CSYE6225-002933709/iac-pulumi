@@ -27,3 +27,11 @@ export AWS_PROFILE=demo
 pulumi stack select demo
 pulumi up
 ```
+
+### Configuring Google cloud CLI
+
+```
+gcloud auth application-default login
+gcloud config set project `PROJECT ID`
+
+```
