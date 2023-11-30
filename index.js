@@ -19,6 +19,10 @@ const rdsPass = envConfig.require("rds-password");
 const domainName = envConfig.require("domain-name");
 
 const amiName = envConfig.require("ami-name");
+const mailgunKey = envConfig.require("mailgun-key");
+const mailgunDomain = envConfig.require("mailgun-domain");
+const mailgunSender = envConfig.require("mailgun-sender");
+
 const projectId = gcpConfig.require("project");
 
 var rdsIP;
@@ -621,7 +625,7 @@ const createLambda = async () => {
     }
   );
 
-  // TODO - Remove defalut values
+
   // Create a Lambda function
 
   lambdaFunction = new aws.lambda.Function("sai-lambda", {
@@ -637,13 +641,13 @@ const createLambda = async () => {
       variables: {
         GOOGLE_CREDENTIALS: gcpServiceAccountKey.privateKey,
         GOOGLE_CLIENT_MAIL: gcpServiceAccount.email,
-        GOOGLE_PROJECT_ID: "hale-life-406421",
+        GOOGLE_PROJECT_ID: projectId,
         BUCKET_NAME: gcpBucket.name,
         DYNAMODB_TABLE: dynamoDBTable.name,
         DYNAMODB_TABLE_ID: dynamoDBTable.id,
-        MAILGUN_KEY: "ca0de657e7679bf8f21df9f565a07e40-30b58138-7685e483",
-        MAILGUN_DOMAIN: "demo.dutt-sai-csye6225.online",
-        MAILGUN_SENDER: "postmaster@demo.dutt-sai-csye6225.online",
+        MAILGUN_KEY: mailgunKey,
+        MAILGUN_DOMAIN: mailgunDomain,
+        MAILGUN_SENDER: mailgunSender,
       },
     },
   });

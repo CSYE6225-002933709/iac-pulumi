@@ -14,4 +14,7 @@ config:
   env:user-data-script: "./userDataScript.sh"
   env:vpc-cidr: "10.0.0.0/16"
   env:vpc-name: "sai-vpc"
+  env:mailgun-key: ""
+  env:mailgun-domain: "demo.dutt-sai-csye6225.online"
+  env:mailgun-sender: "postmaster@demo.dutt-sai-csye6225.online"
   gcp:project: hale-life-406421
