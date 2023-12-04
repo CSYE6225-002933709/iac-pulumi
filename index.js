@@ -48,7 +48,7 @@ var iamRole;
 var rolePolicyAttachment;
 var instanceProfile;
 
-var launchConfiguration;
+var launchTemplate;
 var autoScalingGroup;
 
 var cpuScaleUpPolicy;
@@ -94,13 +94,6 @@ const createSecurityGroups = async () => {
       description: "Enable HTTP and HTTPS access",
       vpcId: vpc.id,
       ingress: [
-        // allow HTTP from anywhere
-        {
-          protocol: "tcp",
-          fromPort: 80,
-          toPort: 80,
-          cidrBlocks: [pubCIDR],
-        },
         // allow HTTPS from anywhere
         {
           protocol: "tcp",
@@ -139,15 +132,6 @@ const createSecurityGroups = async () => {
         cidrBlocks: [pubCIDR],
       },
     ],
-  });
-
-  new aws.ec2.SecurityGroupRule("allow-ssh", {
-    type: "ingress",
-    fromPort: 22,
-    toPort: 22,
-    protocol: "tcp",
-    cidrBlocks: [pubCIDR],
-    securityGroupId: appSecurityGroup.id,
   });
 
   databaseSecurityGroup = new aws.ec2.SecurityGroup("databaseSecurityGroup", {
@@ -228,43 +212,47 @@ const createSubnets = async (availabilityZones) => {
   }
 };
 
-const getUserData = async () => {
-  
-  return pulumi.all([snsTopic.arn, rdsInstance.endpoint]).apply(([topicArn, endpoint]) => {
-
+const getUserData = async (encoded = true) => {
+  return pulumi
+    .all([snsTopic.arn, rdsInstance.endpoint])
+    .apply(([topicArn, endpoint]) => {
       const hostname = endpoint.split(":")[0];
-
-      return `#!/bin/bash  
+        
+        const userData = `#!/bin/bash  
     
-    # Configure CloudWatch
-    sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
-    -a fetch-config \
-    -m ec2 \
-    -c file:/home/admin/cloudwatch-config.json \
-    -s
-
-    cd /home/csye6225/webapp || exit
-    # Setting up the environment variables
-    echo 'DB_USERNAME = "csye6225"' >> .env
-    echo 'DB_PASSWORD = "A5tr0ngPa55w0rd"' >> .env
-    echo 'DB_DIALECT  = "mysql"' >> .env
-    echo 'DB_NAME     = "saiDB"' >> .env
-    sudo echo 'DB_IPADDRESS = "${hostname}"' >> .env        
-    sudo echo 'SNS_ARN = "${topicArn}"' >> .env        
+        # Configure CloudWatch
+        sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+        -a fetch-config \
+        -m ec2 \
+        -c file:/home/admin/cloudwatch-config.json \
+        -s
     
-    sudo npm i
-
-    sudo npm test    
-    cd .. 
-    sudo chown csye6225:csye6225 -R webapp    
-
-    # Setting up the service
-    sudo systemctl daemon-reload
-    sudo systemctl enable csye6225
-    sudo systemctl start csye6225
-    sudo systemctl restart csye6225
-    sudo reboot
-    `;
+        cd /home/csye6225/webapp || exit
+        # Setting up the environment variables
+        echo 'DB_USERNAME = "csye6225"' >> .env
+        echo 'DB_PASSWORD = "A5tr0ngPa55w0rd"' >> .env
+        echo 'DB_DIALECT  = "mysql"' >> .env
+        echo 'DB_NAME     = "saiDB"' >> .env
+        sudo echo 'DB_IPADDRESS = "${hostname}"' >> .env        
+        sudo echo 'SNS_ARN = "${topicArn}"' >> .env        
+        
+        sudo npm i
+    
+        sudo npm test    
+        cd .. 
+        sudo chown csye6225:csye6225 -R webapp    
+    
+        # Setting up the service
+        sudo systemctl daemon-reload
+        sudo systemctl enable csye6225
+        sudo systemctl start csye6225
+        sudo systemctl restart csye6225
+        sudo reboot
+        `;
+        if (encoded === true) 
+          return Buffer.from(userData).toString('base64');
+        else 
+          return userData;
     });
 };
 
@@ -440,7 +428,7 @@ const createLoadBalancer = async () => {
       mostRecent: true,
     })
   );
-
+  /*
   launchConfiguration = new aws.ec2.LaunchConfiguration("launchConfiguration", {
     imageId: ami.id, // Replace with your custom AMI ID
     instanceType: "t2.micro",
@@ -449,11 +437,37 @@ const createLoadBalancer = async () => {
     associatePublicIpAddress: true,
     userData: getUserData(),
     iamInstanceProfile: instanceProfile.name,
-  });
+  });*/
+  launchTemplate = new aws.ec2.LaunchTemplate("myLaunchTemplate", {    
+    name: "myLaunchTemplate",
+    blockDeviceMappings: [
+      {
+        deviceName: "/dev/xvda",
+        ebs: {
+          volumeSize: 25,
+          volumeType: "gp2",
+          deleteOnTermination: true,
+        },
+      },
+    ],
+    instanceType: "t2.micro",
+    imageId: ami.id,
+    keyName: "Login_Sai",
+    iamInstanceProfile: {
+      name: instanceProfile.name,
+    },
+    vpcSecurityGroupIds: [appSecurityGroup.id],
+    userData: getUserData(),
+    subnetId: publicSubnetList[0].id,
+  }, { autoName: false });
 
   autoScalingGroup = new aws.autoscaling.Group("autoScalingGroup", {
+    name: "autoScalingGroup",
     vpcZoneIdentifiers: [publicSubnetList[0].id],
-    launchConfiguration: launchConfiguration.id,
+    launchTemplate: {
+      id: launchTemplate.id,
+      version: launchTemplate.latestVersion,
+    },
     desiredCapacity: 1,
     cooldown: 60,
     minSize: 1,
@@ -465,7 +479,7 @@ const createLoadBalancer = async () => {
         propagateAtLaunch: true,
       },
     ],
-  });
+  }, { autoName: false });
 
   loadBalancer = new aws.lb.LoadBalancer("alb", {
     securityGroups: [loadBalancerSecurityGroup.id],
@@ -493,13 +507,26 @@ const createLoadBalancer = async () => {
     },
   });
 
+  const selectedCertificate = aws.acm
+    .getCertificate(
+      {
+        domain: domainName,
+        mostRecent: true,
+      },
+      { async: true }
+    )
+    .then((certificate) => certificate.arn);
+
   const lb_listener = new aws.lb.Listener("lbListener", {
     loadBalancerArn: loadBalancer.id,
-    port: 80,
+    port: 443,
+    protocol: "HTTPS",
+    sslPolicy: "ELBSecurityPolicy-2016-08",
+    certificateArn: selectedCertificate,
     defaultActions: [
       {
         type: "forward",
-        targetGroupArn: lb_target_group.id,
+        targetGroupArn: lb_target_group.arn,
       },
     ],
   });

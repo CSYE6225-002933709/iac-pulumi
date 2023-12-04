@@ -1,17 +1,20 @@
 encryptionsalt: v1:8mLP5Dw1Fpc=:v1:ALOiQyrmWTB200AU:YrYW5TzDlG9JkArC71t2h/qM9tRsqg==
 config:
   aws:region: us-east-1
-
+  env:ami-name: "csye6225"
+  env:domain-name: "dev.dutt-sai-csye6225.online"
   env:igw-name: "sai-igw"
-  env:vpc-name: "sai-vpc"
   env:prv-rt-assoc: "sai-prv-route-table-assoc"
   env:prv-rt-name: "sai-prv-route-table"
+  env:pub-cidr: "0.0.0.0/0"
   env:pub-rt-assoc: "sai-pub-route-table-assoc"
   env:pub-rt-name: "sai-pub-route-table"
-  
-  env:subnets: '3' # number of subnets
-  env:vpc-cidr: "10.0.0.0/16"
-  env:pub-cidr: "0.0.0.0/0"
-  env:ami-name: "csye6225"
   env:rds-password: "A5tr0ngPa55w0rd"
+  env:subnets: '3' # number of subnets
   env:user-data-script: "./userDataScript.sh"
+  env:vpc-cidr: "10.0.0.0/16"
+  env:vpc-name: "sai-vpc"
+  env:mailgun-key: "ca0de657e7679bf8f21df9f565a07e40-30b58138-7685e483"
+  env:mailgun-domain: "demo.dutt-sai-csye6225.online"
+  env:mailgun-sender: "postmaster@demo.dutt-sai-csye6225.online"
+  gcp:project: hale-life-406421

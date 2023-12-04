@@ -35,3 +35,12 @@ gcloud auth application-default login
 gcloud config set project `PROJECT ID`
 
 ```
+
+### Creating SSL record
+
+```
+sudo aws acm import-certificate --profile demo \             
+  --certificate fileb://demo_dutt-sai-csye6225_online.crt \
+  --certificate-chain fileb://demo_dutt-sai-csye6225_online.ca-bundle \
+  --private-key fileb://csye6225.key
+```
