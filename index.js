@@ -22,6 +22,8 @@ const amiName = envConfig.require("ami-name");
 const mailgunKey = envConfig.require("mailgun-key");
 const mailgunDomain = envConfig.require("mailgun-domain");
 const mailgunSender = envConfig.require("mailgun-sender");
+const instanceType = envConfig.require("instance-type");
+const loginKey = envConfig.require("login-key");
 
 const projectId = gcpConfig.require("project");
 
@@ -274,8 +276,8 @@ const createEC2Instance = async () => {
     "instance",
     {
       ami: ami.id,
-      keyName: "Login_Sai",
-      instanceType: "t2.micro",
+      keyName: loginKey,
+      instanceType: instanceType,
       subnetId: publicSubnetList[0].id,
       vpcId: vpc.id,
       vpcSecurityGroupIds: [appSecurityGroup.id],
@@ -431,8 +433,8 @@ const createLoadBalancer = async () => {
   /*
   launchConfiguration = new aws.ec2.LaunchConfiguration("launchConfiguration", {
     imageId: ami.id, // Replace with your custom AMI ID
-    instanceType: "t2.micro",
-    keyName: "Login_Sai",
+    instanceType: instanceType,
+    keyName: loginKey,
     securityGroups: [appSecurityGroup.id],
     associatePublicIpAddress: true,
     userData: getUserData(),

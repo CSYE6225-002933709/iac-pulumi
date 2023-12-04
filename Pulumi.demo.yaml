@@ -17,4 +17,6 @@ config:
   env:mailgun-domain: "demo.dutt-sai-csye6225.online"
   env:mailgun-key: "ca0de657e7679bf8f21df9f565a07e40-30b58138-7685e483"
   env:mailgun-sender: "postmaster@demo.dutt-sai-csye6225.online"
+  env:instance-type: "t2.micro"
+  env:login-key: "Login_Sai"
   gcp:project: hale-life-406421
